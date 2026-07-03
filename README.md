@@ -174,7 +174,8 @@ Frontend runs on `http://localhost:5173`, backend on `http://localhost:4000`.
 
 ### Admin Endpoints (requires ADMIN role)
 
-| Method | Endpoint | Description |
+| 
+ |
 |---|---|---|
 | GET | `/api/admin/doctors` | List all doctors |
 | POST | `/api/admin/doctors` | Create doctor |

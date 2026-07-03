@@ -1,9 +1,10 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma';
 import { generatePreVisitSummary, generatePostVisitSummary } from './llmService';
-import { createCalendarEvent, deleteCalendarEvent } from './calendarService';
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from './calendarService';
 import { bookingConfirmationEmail, doctorAppointmentNotification, cancellationEmail, sendEmail } from './emailService';
 import { createNotification } from './notificationService';
+import { scheduleMedicationReminders } from '../workers/reminderWorker';
 import { formatTimeRange } from '../utils/slots';
 import { AppError } from '../types';
 
@@ -18,6 +19,7 @@ export async function getAvailableSlots(doctorId: string, dateStr: string) {
     },
   });
   if (!doctor) throw new AppError('Doctor not found', 404);
+  if (!doctor.isActive) throw new AppError('Doctor is not active', 400);
   if (doctor.availability.length === 0) return [];
 
   const leave = await prisma.doctorLeave.findFirst({
@@ -70,6 +72,7 @@ export async function holdSlot(doctorId: string, dateStr: string, startTime: str
   const date = new Date(dateStr);
   const doctor = await prisma.doctor.findUnique({ where: { id: doctorId } });
   if (!doctor) throw new AppError('Doctor not found', 404);
+  if (!doctor.isActive) throw new AppError('Doctor is not active', 400);
   const { end } = formatTimeRange(startTime, doctor.slotDuration);
 
   const existingBooking = await prisma.appointment.findUnique({
@@ -111,6 +114,7 @@ export async function bookAppointment(
     include: { user: true },
   });
   if (!doctor) throw new AppError('Doctor not found', 404);
+  if (!doctor.isActive) throw new AppError('Doctor is not active', 400);
 
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -200,7 +204,7 @@ export async function bookAppointment(
       await tx.calendarEvent.create({
         data: {
           appointmentId: appointment.id,
-          userId: patientId,
+          userId: patient.userId,
           googleEventId: eventId,
           eventType: 'PATIENT',
         },
@@ -268,6 +272,99 @@ export async function cancelAppointment(appointmentId: string, userId: string, r
   return appointment;
 }
 
+export async function rescheduleAppointment(
+  appointmentId: string,
+  userId: string,
+  role: string,
+  newDateStr: string,
+  newStartTime: string,
+) {
+  const newDate = new Date(newDateStr);
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      patient: { include: { user: true } },
+      doctor: { include: { user: true } },
+      calendarEvents: true,
+    },
+  });
+  if (!appointment) throw new AppError('Appointment not found', 404);
+  if (role === 'PATIENT' && appointment.patient.userId !== userId) throw new AppError('Not authorized', 403);
+  if (role === 'DOCTOR' && appointment.doctor.userId !== userId) throw new AppError('Not authorized', 403);
+  if (!['SCHEDULED', 'CONFIRMED'].includes(appointment.status)) throw new AppError('Cannot reschedule a non-active appointment', 400);
+
+  const doctor = await prisma.doctor.findUnique({ where: { id: appointment.doctorId } });
+  if (!doctor || !doctor.isActive) throw new AppError('Doctor is not active', 400);
+
+  const leave = await prisma.doctorLeave.findFirst({
+    where: { doctorId: appointment.doctorId, date: newDate },
+  });
+  if (leave) throw new AppError('Doctor is on leave on this date', 400);
+
+  const existing = await prisma.appointment.findUnique({
+    where: { doctorId_date_startTime: { doctorId: appointment.doctorId, date: newDate, startTime: newStartTime } },
+  });
+  if (existing && ['SCHEDULED', 'CONFIRMED'].includes(existing.status)) {
+    throw new AppError('This slot is already booked', 409);
+  }
+
+  const { end } = formatTimeRange(newStartTime, doctor.slotDuration);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        date: newDate,
+        startTime: newStartTime,
+        endTime: end,
+        status: 'SCHEDULED',
+      },
+    });
+
+    for (const event of appointment.calendarEvents) {
+      if (event.googleEventId) {
+        await updateCalendarEvent(
+          event.googleEventId,
+          `Appointment: ${appointment.patient.user.name} with Dr. ${appointment.doctor.user.name}`,
+          `Appointment at Healthcare Clinic\nPatient: ${appointment.patient.user.name}\nDoctor: Dr. ${appointment.doctor.user.name}`,
+          `${newDateStr}T${newStartTime}:00`,
+          `${newDateStr}T${end}:00`,
+        );
+      }
+    }
+
+    const formattedDate = new Date(appointment.date).toLocaleDateString();
+    const newFormattedDate = newDate.toLocaleDateString();
+    const message = `Your appointment has been rescheduled from ${formattedDate} at ${appointment.startTime} to ${newFormattedDate} at ${newStartTime}.`;
+
+    await createNotification(
+      appointment.patient.userId,
+      'BOOKING_CONFIRMATION',
+      'Appointment Rescheduled',
+      message,
+    );
+    await createNotification(
+      appointment.doctor.userId,
+      'BOOKING_CONFIRMATION',
+      'Appointment Rescheduled',
+      message,
+    );
+
+    await sendEmail(
+      appointment.patient.user.email,
+      'Appointment Rescheduled',
+      `<h2>Appointment Rescheduled</h2><p>${message}</p>`,
+    );
+    await sendEmail(
+      appointment.doctor.user.email,
+      'Appointment Rescheduled',
+      `<h2>Appointment Rescheduled</h2><p>${message}</p>`,
+    );
+
+    return updated;
+  });
+}
+
 export async function submitSymptoms(appointmentId: string, patientId: string, symptoms: string) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
@@ -329,6 +426,7 @@ export async function submitPostVisitNotes(appointmentId: string, doctorId: stri
         },
       });
     }
+    await scheduleMedicationReminders(appointmentId);
   }
 
   return updated;

@@ -33,12 +33,26 @@ export default function FindDoctors() {
     } catch { setSlots([]); }
   }, []);
 
+  const getNextAvailableDate = (doctor: Doctor): string => {
+    const today = new Date();
+    const availableDays = doctor.availability.map(a => a.dayOfWeek);
+    if (availableDays.length === 0) return today.toISOString().split('T')[0];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      if (availableDays.includes(d.getDay())) return d.toISOString().split('T')[0];
+    }
+    return today.toISOString().split('T')[0];
+  };
+
   const handleDoctorSelect = (doctor: Doctor) => {
     setSelectedDoctor(doctor);
     setSelectedSlot(null);
     setShowBooking(true);
     setMessage(null);
-    fetchSlots(doctor.id, selectedDate);
+    const date = getNextAvailableDate(doctor);
+    setSelectedDate(date);
+    fetchSlots(doctor.id, date);
   };
 
   const handleDateChange = (date: string) => {

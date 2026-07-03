@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../api/client';
-import { Doctor } from '../../types';
+import { Doctor, DoctorAvailability } from '../../types';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+type DaySchedule = { enabled: boolean; startTime: string; endTime: string };
+
+const defaultSchedule = (): DaySchedule => ({ enabled: false, startTime: '09:00', endTime: '17:00' });
 
 export default function AdminDoctors() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -13,8 +17,10 @@ export default function AdminDoctors() {
     specialization: '', qualifications: '', slotDuration: 30, consultationFee: 0,
   });
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [leaves, setLeaves] = useState<Record<string, { date: string; reason: string }>>({});
+  const [scheduleOpen, setScheduleOpen] = useState<Record<string, boolean>>({});
+  const [schedules, setSchedules] = useState<Record<string, DaySchedule[]>>({});
+  const [savingSchedule, setSavingSchedule] = useState<Record<string, boolean>>({});
 
   useEffect(() => { loadDoctors(); }, []);
 
@@ -57,6 +63,42 @@ export default function AdminDoctors() {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed';
       alert(msg);
+    }
+  };
+
+  const openSchedule = (doc: Doctor) => {
+    const existing = Array.from({ length: 7 }, (_, i) => {
+      const a = doc.availability.find((av: DoctorAvailability) => av.dayOfWeek === i);
+      return a
+        ? { enabled: a.isAvailable, startTime: a.startTime, endTime: a.endTime }
+        : defaultSchedule();
+    });
+    setSchedules((prev) => ({ ...prev, [doc.id]: existing }));
+    setScheduleOpen((prev) => ({ ...prev, [doc.id]: true }));
+  };
+
+  const updateDaySchedule = (docId: string, day: number, field: keyof DaySchedule, value: string | boolean) => {
+    setSchedules((prev) => {
+      const s = [...(prev[docId] || [])];
+      s[day] = { ...s[day], [field]: value };
+      return { ...prev, [docId]: s };
+    });
+  };
+
+  const saveSchedule = async (docId: string) => {
+    setSavingSchedule((prev) => ({ ...prev, [docId]: true }));
+    try {
+      const sched = schedules[docId];
+      if (!sched) return;
+      const availability = sched
+        .flatMap((d, i) => d.enabled ? [{ dayOfWeek: i, startTime: d.startTime, endTime: d.endTime, isAvailable: true }] : []);
+      await adminApi.setAvailability(docId, availability);
+      setScheduleOpen((prev) => ({ ...prev, [docId]: false }));
+      loadDoctors();
+    } catch {
+      alert('Failed to save schedule');
+    } finally {
+      setSavingSchedule((prev) => ({ ...prev, [docId]: false }));
     }
   };
 
@@ -142,11 +184,65 @@ export default function AdminDoctors() {
                 <p className="text-sm text-gray-500 mt-1"><span className="font-medium">Available:</span> {daysAvail(doc.availability)}</p>
               </div>
               <div className="flex gap-2 ml-4">
+                <button
+                  onClick={() => scheduleOpen[doc.id] ? setScheduleOpen(p => ({ ...p, [doc.id]: false })) : openSchedule(doc)}
+                  className={`px-3 py-1.5 rounded text-sm ${scheduleOpen[doc.id] ? 'bg-gray-200 text-gray-700' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                >
+                  Schedule
+                </button>
                 <button onClick={() => handleToggleActive(doc.id, doc.isActive)} className={`px-3 py-1.5 rounded text-sm ${doc.isActive ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
                   {doc.isActive ? 'Deactivate' : 'Activate'}
                 </button>
               </div>
             </div>
+
+            {scheduleOpen[doc.id] && schedules[doc.id] && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                <p className="text-sm font-medium text-gray-700 mb-3">Weekly Schedule</p>
+                <div className="space-y-2">
+                  {DAYS.map((day, i) => {
+                    const s = schedules[doc.id]?.[i] || defaultSchedule();
+                    return (
+                      <div key={i} className="flex items-center gap-3 text-sm">
+                        <label className="flex items-center gap-2 w-28">
+                          <input
+                            type="checkbox"
+                            checked={s.enabled}
+                            onChange={(e) => updateDaySchedule(doc.id, i, 'enabled', e.target.checked)}
+                            className="rounded"
+                          />
+                          {day}
+                        </label>
+                        {s.enabled && (
+                          <>
+                            <input
+                              type="time"
+                              value={s.startTime}
+                              onChange={(e) => updateDaySchedule(doc.id, i, 'startTime', e.target.value)}
+                              className="px-2 py-1 border rounded-md text-sm"
+                            />
+                            <span className="text-gray-400">to</span>
+                            <input
+                              type="time"
+                              value={s.endTime}
+                              onChange={(e) => updateDaySchedule(doc.id, i, 'endTime', e.target.value)}
+                              className="px-2 py-1 border rounded-md text-sm"
+                            />
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => saveSchedule(doc.id)}
+                  disabled={savingSchedule[doc.id]}
+                  className="mt-3 bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingSchedule[doc.id] ? 'Saving...' : 'Save Schedule'}
+                </button>
+              </div>
+            )}
 
             <div className="mt-4 p-3 bg-gray-50 rounded-md">
               <p className="text-sm font-medium text-gray-700 mb-2">Mark Leave</p>

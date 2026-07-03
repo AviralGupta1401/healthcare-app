@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../config/prisma';
 import { authenticate, authorize } from '../middleware/auth';
-import { getAvailableSlots, holdSlot, bookAppointment, cancelAppointment, submitSymptoms } from '../services/appointmentService';
+import { getAvailableSlots, holdSlot, bookAppointment, cancelAppointment, rescheduleAppointment, submitSymptoms } from '../services/appointmentService';
 import { AppError } from '../types';
 
 const router = Router();
@@ -25,15 +25,17 @@ router.get('/doctors', asyncHandler(async (req, res) => {
     },
   });
 
+  const withAvailability = doctors.filter(d => d.availability.length > 0);
+
   if (name) {
-    const filtered = doctors.filter(d =>
+    const filtered = withAvailability.filter(d =>
       d.user.name.toLowerCase().includes((name as string).toLowerCase())
     );
     res.json(filtered);
     return;
   }
 
-  res.json(doctors);
+  res.json(withAvailability);
 }));
 
 router.get('/doctors/:id/slots', asyncHandler(async (req, res) => {
@@ -114,6 +116,13 @@ router.get('/appointments/:id', asyncHandler(async (req, res) => {
 router.delete('/appointments/:id', asyncHandler(async (req, res) => {
   const { reason } = req.body;
   const appointment = await cancelAppointment(req.params.id, req.user!.userId, reason);
+  res.json(appointment);
+}));
+
+router.put('/appointments/:id/reschedule', asyncHandler(async (req, res) => {
+  const { date, startTime } = req.body;
+  if (!date || !startTime) throw new AppError('date and startTime are required');
+  const appointment = await rescheduleAppointment(req.params.id, req.user!.userId, 'PATIENT', date, startTime);
   res.json(appointment);
 }));
 

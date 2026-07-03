@@ -63,6 +63,8 @@ export const patientApi = {
   getAppointment: (id: string) => api.get(`/patients/appointments/${id}`),
   cancelAppointment: (id: string, reason?: string) =>
     api.delete(`/patients/appointments/${id}`, { data: { reason } }),
+  rescheduleAppointment: (id: string, data: { date: string; startTime: string }) =>
+    api.put(`/patients/appointments/${id}/reschedule`, data),
   getMedications: () => api.get('/patients/medications'),
 };
 
@@ -74,5 +76,7 @@ export const doctorApi = {
   updateStatus: (id: string, data: { status: string; reason?: string }) =>
     api.put(`/doctors/appointments/${id}/status`, data),
   getProfile: () => api.get('/doctors/profile'),
+  rescheduleAppointment: (id: string, data: { date: string; startTime: string }) =>
+    api.put(`/doctors/appointments/${id}/reschedule`, data),
   getStats: () => api.get('/doctors/stats'),
 };

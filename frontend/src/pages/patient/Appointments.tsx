@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { patientApi } from '../../api/client';
-import { Appointment } from '../../types';
+import { Appointment, AvailableSlot } from '../../types';
 
 export default function PatientAppointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<AvailableSlot[]>([]);
+  const [rescheduleSlot, setRescheduleSlot] = useState<string | null>(null);
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
 
   useEffect(() => { loadAppointments(); }, []);
 
@@ -27,6 +32,43 @@ export default function PatientAppointments() {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Cancellation failed';
       alert(msg);
+    }
+  };
+
+  const openReschedule = (apt: Appointment) => {
+    setRescheduleId(apt.id);
+    setRescheduleDate(new Date().toISOString().split('T')[0]);
+    setRescheduleSlots([]);
+    setRescheduleSlot(null);
+    fetchRescheduleSlots(apt.doctor?.id || '', new Date().toISOString().split('T')[0]);
+  };
+
+  const fetchRescheduleSlots = async (doctorId: string, date: string) => {
+    try {
+      const res = await patientApi.getSlots(doctorId, date);
+      setRescheduleSlots(res.data.slots);
+    } catch { setRescheduleSlots([]); }
+  };
+
+  const handleRescheduleDateChange = (apt: Appointment, date: string) => {
+    setRescheduleDate(date);
+    setRescheduleSlot(null);
+    fetchRescheduleSlots(apt.doctor?.id || '', date);
+  };
+
+  const handleRescheduleSubmit = async (id: string) => {
+    if (!rescheduleSlot) return;
+    setRescheduleLoading(true);
+    try {
+      await patientApi.rescheduleAppointment(id, { date: rescheduleDate, startTime: rescheduleSlot });
+      setRescheduleId(null);
+      setRescheduleSlot(null);
+      loadAppointments();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Reschedule failed';
+      alert(msg);
+    } finally {
+      setRescheduleLoading(false);
     }
   };
 
@@ -99,14 +141,22 @@ export default function PatientAppointments() {
                     </div>
                   )}
                 </div>
-                <div className="ml-4">
+                <div className="flex gap-2 ml-4">
                   {(apt.status === 'SCHEDULED' || apt.status === 'CONFIRMED') && (
-                    <button
-                      onClick={() => setCancelId(apt.id)}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium"
-                    >
-                      Cancel
-                    </button>
+                    <>
+                      <button
+                        onClick={() => openReschedule(apt)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        Reschedule
+                      </button>
+                      <button
+                        onClick={() => setCancelId(apt.id)}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -127,6 +177,56 @@ export default function PatientAppointments() {
                     </button>
                     <button onClick={() => { setCancelId(null); setCancelReason(''); }} className="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-300">
                       Keep
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {rescheduleId === apt.id && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-md">
+                  <p className="text-sm font-medium text-blue-700 mb-2">Reschedule Appointment</p>
+                  <label className="block text-xs text-gray-500 mb-1">New Date</label>
+                  <input
+                    type="date"
+                    value={rescheduleDate}
+                    onChange={(e) => handleRescheduleDateChange(apt, e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md mb-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {rescheduleSlots.length === 0 ? (
+                    <p className="text-sm text-gray-500 mb-3">No slots available for this date.</p>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      {rescheduleSlots.map((slot) => (
+                        <button
+                          key={slot.time}
+                          disabled={!slot.available}
+                          onClick={() => setRescheduleSlot(slot.time)}
+                          className={`px-2 py-1.5 text-sm rounded border ${
+                            rescheduleSlot === slot.time
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : slot.available
+                                ? 'bg-white text-gray-700 border-gray-300 hover:border-blue-500'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {slot.time}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleRescheduleSubmit(apt.id)}
+                      disabled={!rescheduleSlot || rescheduleLoading}
+                      className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {rescheduleLoading ? 'Rescheduling...' : 'Confirm Reschedule'}
+                    </button>
+                    <button
+                      onClick={() => { setRescheduleId(null); setRescheduleSlot(null); }}
+                      className="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-300"
+                    >
+                      Cancel
                     </button>
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import prisma from '../config/prisma';
 import { sendEmail } from './emailService';
+import { deleteCalendarEvent } from './calendarService';
 import { AppError } from '../types';
 
 export async function createNotification(
@@ -84,6 +85,7 @@ export async function notifyDoctorLeave(doctorId: string, date: string, reason?:
     include: {
       patient: { include: { user: true } },
       doctor: { include: { user: true } },
+      calendarEvents: true,
     },
   });
 
@@ -96,18 +98,15 @@ export async function notifyDoctorLeave(doctorId: string, date: string, reason?:
       },
     });
 
+    for (const event of appointment.calendarEvents) {
+      if (event.googleEventId) await deleteCalendarEvent(event.googleEventId);
+    }
+
     await createNotification(
       appointment.patient.userId,
       'LEAVE_NOTICE',
       'Appointment Cancelled - Doctor on Leave',
       `Your appointment with Dr. ${appointment.doctor.user.name} on ${date} has been cancelled because the doctor is on leave. Please reschedule.`,
-    );
-
-    const formattedDate = new Date(appointment.date).toLocaleDateString();
-    await sendEmail(
-      appointment.patient.user.email,
-      'Appointment Cancelled - Doctor on Leave',
-      `Your appointment with Dr. ${appointment.doctor.user.name} on ${formattedDate} at ${appointment.startTime} has been cancelled because the doctor is on leave. Please log in to reschedule.`
     );
   }
 

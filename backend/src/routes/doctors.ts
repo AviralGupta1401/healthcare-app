@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../config/prisma';
 import { authenticate, authorize } from '../middleware/auth';
-import { cancelAppointment, submitPostVisitNotes } from '../services/appointmentService';
+import { cancelAppointment, rescheduleAppointment, submitPostVisitNotes } from '../services/appointmentService';
 import { AppError } from '../types';
 
 const router = Router();
@@ -82,6 +82,16 @@ router.put('/appointments/:id/status', asyncHandler(async (req, res) => {
     data: { status },
   });
   res.json(updated);
+}));
+
+router.put('/appointments/:id/reschedule', asyncHandler(async (req, res) => {
+  const doctor = await prisma.doctor.findUnique({ where: { userId: req.user!.userId } });
+  if (!doctor) throw new AppError('Doctor profile not found', 404);
+
+  const { date, startTime } = req.body;
+  if (!date || !startTime) throw new AppError('date and startTime are required');
+  const appointment = await rescheduleAppointment(req.params.id, req.user!.userId, 'DOCTOR', date, startTime);
+  res.json(appointment);
 }));
 
 router.get('/profile', asyncHandler(async (req, res) => {
