@@ -1,11 +1,10 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "npm install && npx prisma generate"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npx prisma migrate deploy && npx tsx src/index.ts",
+    "startCommand": "npx prisma generate && npx prisma migrate deploy && npx tsx prisma/seed.ts && npx tsx src/index.ts",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
