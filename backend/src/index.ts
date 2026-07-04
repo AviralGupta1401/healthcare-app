@@ -13,6 +13,10 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+app.get('/', (_req, res) => {
+  res.json({ status: 'ok', message: 'Healthcare API is running. Use the frontend app to login or register.' });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });

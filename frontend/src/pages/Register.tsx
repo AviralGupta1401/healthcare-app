@@ -48,13 +48,6 @@ export default function Register() {
             <label className="block text-gray-700 text-sm font-medium mb-2">Phone</label>
             <input type="tel" value={form.phone} onChange={update('phone')} className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-medium mb-2">Role</label>
-            <select value={form.role} onChange={update('role')} className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="PATIENT">Patient</option>
-              <option value="DOCTOR">Doctor</option>
-            </select>
-          </div>
           <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50">
             {loading ? 'Registering...' : 'Register'}
           </button>

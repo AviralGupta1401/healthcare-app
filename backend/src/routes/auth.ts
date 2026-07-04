@@ -14,8 +14,8 @@ router.post('/register', asyncHandler(async (req, res) => {
     res.status(400).json({ error: 'email, password, name, and role are required' });
     return;
   }
-  if (!['PATIENT', 'DOCTOR', 'ADMIN'].includes(role)) {
-    res.status(400).json({ error: 'Role must be PATIENT, DOCTOR, or ADMIN' });
+  if (role !== 'PATIENT') {
+    res.status(400).json({ error: 'Public registration is only available for patients' });
     return;
   }
   const result = await register(email, password, name, role, phone);
