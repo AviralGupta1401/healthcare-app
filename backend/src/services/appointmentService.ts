@@ -70,6 +70,9 @@ export async function getAvailableSlots(doctorId: string, dateStr: string) {
 
 export async function holdSlot(doctorId: string, dateStr: string, startTime: string, patientId: string) {
   const date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (date < today) throw new AppError('Cannot hold a slot in the past', 400);
   const doctor = await prisma.doctor.findUnique({ where: { id: doctorId } });
   if (!doctor) throw new AppError('Doctor not found', 404);
   if (!doctor.isActive) throw new AppError('Doctor is not active', 400);
@@ -109,6 +112,10 @@ export async function bookAppointment(
   symptoms?: string,
 ) {
   const date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (date < today) throw new AppError('Cannot book an appointment in the past', 400);
+
   const doctor = await prisma.doctor.findUnique({
     where: { id: doctorId },
     include: { user: true },
@@ -238,7 +245,7 @@ export async function cancelAppointment(appointmentId: string, userId: string, r
   const isDoctor = appointment.doctor.userId === userId;
   if (!isPatient && !isDoctor) throw new AppError('Not authorized to cancel this appointment', 403);
 
-  await prisma.appointment.update({
+  const updated = await prisma.appointment.update({
     where: { id: appointmentId },
     data: { status: 'CANCELLED', cancellationReason: reason },
   });
@@ -269,7 +276,7 @@ export async function cancelAppointment(appointmentId: string, userId: string, r
     ),
   );
 
-  return appointment;
+  return updated;
 }
 
 export async function rescheduleAppointment(
@@ -280,6 +287,9 @@ export async function rescheduleAppointment(
   newStartTime: string,
 ) {
   const newDate = new Date(newDateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (newDate < today) throw new AppError('Cannot reschedule to a past date', 400);
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
     include: {
