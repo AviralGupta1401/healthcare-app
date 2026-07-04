@@ -8,8 +8,8 @@ A full-stack healthcare appointment platform with separate portals for patients,
 - **Backend:** Node.js, Express, TypeScript, Prisma ORM
 - **Database:** PostgreSQL
 - **Queue:** Redis + Bull (background jobs)
-- **AI:** OpenAI GPT-4o-mini
-- **Email:** Nodemailer / SendGrid
+- **AI:** Groq (OpenAI-compatible) / OpenAI GPT-4o-mini
+- **Email:** Nodemailer / SendGrid (Mailpit in dev)
 - **Calendar:** Google Calendar API (OAuth 2.0)
 
 ---
@@ -140,6 +140,11 @@ npm run dev
 ```
 
 Frontend runs on `http://localhost:5173`, backend on `http://localhost:4000`.
+
+### Deployed URLs
+
+- **Frontend:** https://frontend-sooty-sigma-n98b9tl9z8.vercel.app
+- **Backend:** https://api-production-add5.up.railway.app
 
 ### 6. Seed Credentials
 
