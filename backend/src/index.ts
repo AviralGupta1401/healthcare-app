@@ -10,10 +10,7 @@ import calendarRoutes from './routes/calendar';
 
 const app = express();
 
-app.use(cors({
-  origin: [env.FRONTEND_URL, 'https://frontend-sooty-sigma-n98b9tl9z8.vercel.app'].filter(Boolean),
-  credentials: true,
-}));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => {
