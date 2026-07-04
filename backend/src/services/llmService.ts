@@ -1,7 +1,11 @@
 import OpenAI from 'openai';
 import { env } from '../config/env';
 
-const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+const isGroq = env.OPENAI_API_KEY?.startsWith('gsk_');
+const openai = new OpenAI({
+  apiKey: env.OPENAI_API_KEY,
+  ...(isGroq && { baseURL: 'https://api.groq.com/openai/v1' }),
+});
 
 const PRE_VISIT_PROMPT = `Analyse these symptoms and return a JSON object (no markdown, no code fences, pure JSON only) with:
 - urgencyLevel: "Low" | "Medium" | "High"
@@ -23,17 +27,18 @@ Clinical Notes: {notes}
 Prescriptions: {prescriptions}`;
 
 async function callLLM(prompt: string): Promise<string | null> {
-  if (!env.OPENAI_API_KEY || env.OPENAI_API_KEY === 'sk-your-openai-api-key') {
+  if (!env.OPENAI_API_KEY || env.OPENAI_API_KEY.startsWith('sk-your')) {
     return null;
   }
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: isGroq ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       max_tokens: 1000,
     });
-    return response.choices[0]?.message?.content || null;
+    const content = response.choices[0]?.message?.content;
+    return content || null;
   } catch (error) {
     console.error('LLM call failed:', error);
     return null;

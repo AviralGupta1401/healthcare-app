@@ -226,7 +226,9 @@ export async function bookAppointment(
       });
     }
 
-    return appointment;
+    return tx.appointment.findUniqueOrThrow({
+      where: { id: appointment.id },
+    });
   });
 }
 
